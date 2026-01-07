@@ -4,9 +4,9 @@ def main() -> None:
 
 # Export CUDA operations
 try:
-    from .vector_add import vector_add
+    from .cuda_kernels import matrix_add, matrix_add_triton, vector_add
 
-    __all__ = ["vector_add"]
+    __all__ = ["matrix_add", "matrix_add_triton", "vector_add"]
 except ImportError:
     # Extension not built yet
     __all__ = []
