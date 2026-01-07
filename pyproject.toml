@@ -3,21 +3,15 @@ name = "gpu-100days"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "mino-park7", email = "minho.park@hyperaccel.ai" }
-]
+authors = [{ name = "mino-park7", email = "minho.park@hyperaccel.ai" }]
 requires-python = ">=3.11"
-dependencies = [
-    "numpy>=2.4.0",
-    "setuptools>=80.9.0",
-    "torch==2.7.0",
-]
+dependencies = ["numpy>=2.4.0", "setuptools>=80.9.0", "torch==2.7.0"]
 
 [project.scripts]
 gpu-100days = "gpu_100days:main"
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=61", "torch==2.7.0", "numpy>=2.4.0"]
 build-backend = "setuptools.build_meta"
 
 [dependency-groups]
@@ -25,14 +19,16 @@ dev = [
     "ruff>=0.14.10",
     "ty==0.0.5",
     "pre-commit>=3.0.0",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
 ]
-
-[tool.uv]
-default-groups = ["dev"]
 
 [[tool.uv.index]]
 url = "http://nexus.hyperaccel.ai/repository/pypi-group/simple/"
 default = true
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.ruff]
 target-version = "py311"
@@ -40,13 +36,13 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "C4", # flake8-comprehensions
-    "UP", # pyupgrade
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
     "ARG", # flake8-unused-arguments
     "SIM", # flake8-simplify
     "PTH", # flake8-use-pathlib
@@ -57,10 +53,12 @@ select = [
     "RUF", # Ruff-specific rules
 ]
 ignore = [
-    "E501",  # line too long (handled by formatter)
-    "B008",  # do not perform function calls in argument defaults
+    "E501",    # line too long (handled by formatter)
+    "ERA001",
+    "B008",    # do not perform function calls in argument defaults
     "PLR0913", # too many arguments
     "PLC0415",
+
 ]
 
 [tool.ruff.format]
@@ -73,4 +71,4 @@ line-ending = "auto"
 known-first-party = ["gpu_100days"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+"__init__.py" = ["F401"] # Allow unused imports in __init__.py

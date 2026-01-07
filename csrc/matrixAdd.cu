@@ -2,16 +2,17 @@
 #include <cuda_runtime.h>
 #include <torch/extension.h>
 
-// CUDA kernel for vector addition
-__global__ void vector_add_kernel(const float* a, const float* b, float* c, int n) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
+__global__ void matrix_add_kernel(const float* a, const float* b, float* c, int M, int N) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (row < M && col < N) {
+        int idx = row * N + col;
         c[idx] = a[idx] + b[idx];
     }
 }
 
-// PyTorch wrapper function
-torch::Tensor vector_add(torch::Tensor a, torch::Tensor b) {
+torch::Tensor matrix_add(torch::Tensor a, torch::Tensor b) {
     // Check inputs
     TORCH_CHECK(a.device().is_cuda(), "Input tensor a must be on CUDA");
     TORCH_CHECK(b.device().is_cuda(), "Input tensor b must be on CUDA");
@@ -19,7 +20,7 @@ torch::Tensor vector_add(torch::Tensor a, torch::Tensor b) {
     TORCH_CHECK(a.dtype() == torch::kFloat32, "Input tensors must be float32");
     TORCH_CHECK(b.dtype() == torch::kFloat32, "Input tensors must be float32");
 
-    // Create output tensor
+    // Create output tensora
     auto c = torch::empty_like(a);
 
     // Get tensor data pointers
@@ -27,12 +28,14 @@ torch::Tensor vector_add(torch::Tensor a, torch::Tensor b) {
     const float* b_data = b.data_ptr<float>();
     float* c_data = c.data_ptr<float>();
 
-    // Launch kernel
-    int n = a.numel();
-    int threads_per_block = 256;
-    int num_blocks = (n + threads_per_block - 1) / threads_per_block;
+    // Get tensor shapes
+    int M = a.size(0);
+    int N = a.size(1);
 
-    vector_add_kernel<<<num_blocks, threads_per_block>>>(a_data, b_data, c_data, n);
+    // Launch kernel
+    dim3 block(16, 16);
+    dim3 grid((M + block.x - 1) / block.x, (N + block.y - 1) / block.y);
+    matrix_add_kernel<<<grid, block>>>(a_data, b_data, c_data, M, N);
 
     // Check for CUDA errors
     cudaError_t err = cudaGetLastError();

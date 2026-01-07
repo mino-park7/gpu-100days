@@ -104,10 +104,10 @@ ext_modules = [
                 # Format: -gencode arch=compute_XX,code=sm_XX
                 "-gencode",
                 "arch=compute_86,code=sm_86",  # A40, A100
-                "-gencode",
-                "arch=compute_89,code=sm_89",
-                "-gencode",
-                "arch=compute_90,code=sm_90",
+                # "-gencode",
+                # "arch=compute_89,code=sm_89",
+                # "-gencode",
+                # "arch=compute_90,code=sm_90",
             ],
         },
     )
