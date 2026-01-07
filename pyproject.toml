@@ -54,6 +54,7 @@ select = [
 ]
 ignore = [
     "E501",    # line too long (handled by formatter)
+    "E731",    # do not assign a lambda expression, use a def
     "ERA001",
     "B008",    # do not perform function calls in argument defaults
     "PLR0913", # too many arguments

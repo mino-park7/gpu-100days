@@ -68,8 +68,19 @@ def matrix_add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return cuda_ops.matrix_add(a, b)
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": 16}, num_warps=1),
+        triton.Config({"BLOCK_SIZE": 64}, num_warps=2),
+        triton.Config({"BLOCK_SIZE": 64}, num_warps=4),
+        triton.Config({"BLOCK_SIZE": 32}, num_warps=1),
+        triton.Config({"BLOCK_SIZE": 32}, num_warps=2),
+        triton.Config({"BLOCK_SIZE": 32}, num_warps=4),
+    ],
+    key=["M", "N"],
+)
 @triton.jit
-def _triton_matrix_add_kernel(a, b, out, M: int, N: int, BLOCK_SIZE: tl.constexpr) -> None:
+def _triton_matrix_add_kernel(a_ptr, b_ptr, out, M: int, N: int, BLOCK_SIZE: tl.constexpr) -> None:
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
 
@@ -88,8 +99,8 @@ def _triton_matrix_add_kernel(a, b, out, M: int, N: int, BLOCK_SIZE: tl.constexp
 
     flat_indices = row_indices * N + col_indices
 
-    A = tl.load(a + flat_indices, mask=valid_mask, other=0.0)
-    B = tl.load(b + flat_indices, mask=valid_mask, other=0.0)
+    A = tl.load(a_ptr + flat_indices, mask=valid_mask, other=0.0)
+    B = tl.load(b_ptr + flat_indices, mask=valid_mask, other=0.0)
 
     out_data = A + B
 
@@ -111,8 +122,7 @@ def matrix_add_triton(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     M, N = a.shape
     out = torch.empty_like(a)
-    BLOCK_SIZE = 16
-    grid = (triton.cdiv(M, BLOCK_SIZE), triton.cdiv(N, BLOCK_SIZE))
-    _triton_matrix_add_kernel[grid](a, b, out, M, N, tl.constexpr(BLOCK_SIZE))
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE"]), triton.cdiv(N, meta["BLOCK_SIZE"]))
+    _triton_matrix_add_kernel[grid](a, b, out, M, N)
 
     return out
