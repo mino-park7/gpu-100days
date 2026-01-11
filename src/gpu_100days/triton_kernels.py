@@ -105,3 +105,73 @@ def matrix_sub_triton(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     _triton_matrix_sub_kernel[grid](a, b, out, N, BLOCK_SIZE=tl.constexpr(256))
 
     return out
+
+
+@triton.autotune(
+    configs=[
+        triton.Config({"bs0": 16, "bs1": 16}, num_warps=4),
+        triton.Config({"bs0": 32, "bs1": 16}, num_warps=4),
+        triton.Config({"bs0": 16, "bs1": 32}, num_warps=4),
+        triton.Config({"bs0": 8, "bs1": 32}, num_warps=4),
+        triton.Config({"bs0": 32, "bs1": 8}, num_warps=4),
+    ],
+    key=["height", "width"],
+)
+@triton.jit
+def _triton_grey_scale_kernel(
+    image_ptr, out_ptr, height: int, width: int, bs0: tl.constexpr, bs1: tl.constexpr
+) -> None:
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+
+    row_indices = pid_x * bs0 + tl.arange(0, bs0)
+    col_indices = pid_y * bs1 + tl.arange(0, bs1)
+    row_mask = row_indices < height
+    col_mask = col_indices < width
+
+    valid_mask = row_mask[:, None] & col_mask[None, :]
+
+    flat_indices = row_indices[:, None] * width + col_indices[None, :]
+
+    # Load uint8 values and convert to float32 for computation
+    R = tl.load(image_ptr + 0 * width * height + flat_indices, mask=valid_mask).to(tl.float32)
+    G = tl.load(image_ptr + 1 * width * height + flat_indices, mask=valid_mask).to(tl.float32)
+    B = tl.load(image_ptr + 2 * width * height + flat_indices, mask=valid_mask).to(tl.float32)
+
+    # Compute grayscale value
+    out_data = 0.299 * R + 0.587 * G + 0.114 * B
+
+    # Convert back to uint8 and store
+    out_data = out_data.to(tl.uint8)
+
+    tl.store(out_ptr + flat_indices, out_data, mask=valid_mask)
+
+
+def grey_scale_triton(image: torch.Tensor) -> torch.Tensor:
+    """
+    Convert an RGB image to greyscale using Triton kernel.
+
+    Args:
+        image: Input image tensor (must be on CUDA, uint8)
+    """
+    rgb_channels = 3
+    if not image.is_cuda:
+        raise TritonExtensionError("Image must be on CUDA device")
+    if image.dtype != torch.uint8:
+        raise TritonExtensionError("Image must be uint8")
+    if image.shape[0] != rgb_channels:
+        raise TritonExtensionError("Image must have 3 channels")
+
+    if not image.is_contiguous():
+        image = image.contiguous()
+
+    channel, height, width = image.shape
+
+    out = torch.empty((height, width), dtype=image.dtype, device=image.device)
+
+    grid = lambda meta: (triton.cdiv(height, meta["bs0"]), triton.cdiv(width, meta["bs1"]))
+    _triton_grey_scale_kernel[grid](image, out, height, width)
+
+    out = out.unsqueeze(0)
+
+    return out.view(1, height, width)
