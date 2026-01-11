@@ -95,12 +95,23 @@ python src/gpu_100days/vector_add.py
 gpu-100days/
 ├── csrc/                    # CUDA 소스 파일 (.cu)
 │   ├── CMakeLists.txt       # CMake 빌드 설정
-│   └── vectorAdd.cu         # 예제 CUDA 커널
+│   ├── bindings.cu          # CUDA 커널 바인딩
+│   ├── vectorAdd.cu         # 벡터 덧셈 CUDA 커널
+│   ├── matrixAdd.cu         # 행렬 덧셈 CUDA 커널
+│   └── matrixSub.cu         # 행렬 뺄셈 CUDA 커널
+|   └── ...
 ├── src/
 │   ├── cuda_ops.pyi         # 타입 스텁 파일
 │   └── gpu_100days/         # Python 패키지
 │       ├── __init__.py
-│       └── vector_add.py    # Python 래퍼
+│       ├── cuda_kernels.py  # CUDA 커널 Python 래퍼
+│       └── triton_kernels.py # Triton 커널 구현
+├── tests/                   # 테스트 파일
+│   ├── conftest.py          # pytest 설정 및 유틸리티
+│   ├── test_day1.py         # Day 1 테스트
+│   ├── test_day2.py         # Day 2 테스트
+│   └── test_day3.py         # Day 3 테스트
+|   └── test_dayN.py
 ├── setup.py                 # setuptools 빌드 스크립트
 ├── pyproject.toml          # 프로젝트 설정
 └── README.md
@@ -115,7 +126,8 @@ gpu-100days/
 | Day | 주제 | 내용 | 상태 |
 |-----|------|------|------|
 | 1 | 벡터 연산 기초 | Print global indices for 1D vector<br>GPU 벡터 덧셈 (메모리 할당, 호스트-디바이스 전송) | [x] |
-| 2 | Add matrix | Matrix 덧셈 cuda , triton                                                       | [ ] |
+| 2 | Add matrix | Matrix 덧셈 cuda , triton                                                       | [x] |
+| 3 | Sub matrix for multiple data type| Matrix 뺄셈 cuda, triton                                                       | [x] |
 
 ## 📖 참고 자료
 
