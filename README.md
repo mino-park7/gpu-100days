@@ -128,6 +128,7 @@ gpu-100days/
 | 1 | 벡터 연산 기초 | Print global indices for 1D vector<br>GPU 벡터 덧셈 (메모리 할당, 호스트-디바이스 전송) | [x] |
 | 2 | Add matrix | Matrix 덧셈 cuda , triton                                                       | [x] |
 | 3 | Sub matrix for multiple data type| Matrix 뺄셈 cuda, triton                                                       | [x] |
+| 4 | GrayScaler using CUDA and Triton | RGB image를 Gray 스케일로 변환 | [x] |
 
 ## 📖 참고 자료
 

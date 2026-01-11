@@ -40,3 +40,15 @@ def matrix_sub(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         Difference of a and b
     """
     ...
+
+def gray_scale(image: torch.Tensor) -> torch.Tensor:
+    """
+    Convert an RGB image to grayscale using CUDA kernel.
+
+    Args:
+        image: Input image tensor (must be on CUDA, uint8)
+
+    Returns:
+        Grayscale image tensor
+    """
+    ...

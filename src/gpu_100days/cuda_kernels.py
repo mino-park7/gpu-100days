@@ -88,3 +88,27 @@ def matrix_sub(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         raise CUDAExtensionError("Both tensors must have the same shape")
 
     return cuda_ops.matrix_sub(a, b)
+
+
+def gray_scale(image: torch.Tensor) -> torch.Tensor:
+    """
+    Convert an RGB image to grayscale using CUDA kernel.
+
+    Args:
+        image: Input image tensor (must be on CUDA, uint8)
+
+    Returns:
+        Grayscale image tensor
+    """
+    rgb_channels = 3
+    if not image.is_cuda:
+        raise CUDAExtensionError("Image must be on CUDA device")
+    if image.dtype != torch.uint8:
+        raise CUDAExtensionError("Image must be uint8")
+    if image.shape[0] != rgb_channels:
+        raise CUDAExtensionError("Image must have 3 channels")
+
+    if not image.is_contiguous():
+        image = image.contiguous()
+
+    return cuda_ops.gray_scale(image).unsqueeze(0)
