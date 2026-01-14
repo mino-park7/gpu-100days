@@ -5,7 +5,12 @@ def main() -> None:
 # Export CUDA operations
 try:
     from .cuda_kernels import gray_scale, matrix_add, matrix_sub, vector_add
-    from .triton_kernels import grey_scale_triton, matrix_add_triton, matrix_sub_triton
+    from .triton_kernels import (
+        grey_scale_triton,
+        matrix_add_triton,
+        matrix_multiply_triton,
+        matrix_sub_triton,
+    )
 
     __all__ = [
         "matrix_add",
@@ -15,6 +20,7 @@ try:
         "matrix_sub_triton",
         "grey_scale_triton",
         "gray_scale",
+        "matrix_multiply_triton",
     ]
 except ImportError:
     # Extension not built yet

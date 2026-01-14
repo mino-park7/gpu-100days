@@ -6,7 +6,9 @@ readme = "README.md"
 authors = [{ name = "mino-park7", email = "minho.park@hyperaccel.ai" }]
 requires-python = ">=3.11"
 dependencies = [
+    "matplotlib>=3.10.8",
     "numpy>=2.4.0",
+    "pandas>=2.3.3",
     "setuptools>=80.9.0",
     "torch==2.7.0",
     "torchvision>=0.22.0",
