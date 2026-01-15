@@ -112,3 +112,24 @@ def gray_scale(image: torch.Tensor) -> torch.Tensor:
         image = image.contiguous()
 
     return cuda_ops.gray_scale(image).unsqueeze(0)
+
+
+def seeded_dropout(x: torch.Tensor, p: float, seed: int) -> torch.Tensor:
+    """
+    Apply seeded dropout to a tensor using CUDA kernel.
+
+    Args:
+        x: Input tensor (must be on CUDA)
+        p: Dropout probability
+        seed: Random seed
+    """
+    if not x.is_cuda:
+        raise CUDAExtensionError("Input tensor must be on CUDA device")
+
+    if x.dtype not in [torch.float32, torch.float16, torch.bfloat16]:
+        raise CUDAExtensionError("Input tensor must be float32, float16, or bfloat16")
+
+    if not x.is_contiguous():
+        x = x.contiguous()
+
+    return cuda_ops.seeded_dropout(x, p, seed)
