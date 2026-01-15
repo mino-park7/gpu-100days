@@ -8,9 +8,11 @@ find_package(CUDAToolkit REQUIRED)
 # Prefer Python from .venv if it exists
 get_filename_component(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
 set(VENV_PYTHON "${PROJECT_ROOT}/.venv/bin/python3")
+
 if(EXISTS "${VENV_PYTHON}")
     get_filename_component(VENV_PYTHON_DIR "${VENV_PYTHON}" DIRECTORY)
     get_filename_component(VENV_ROOT "${VENV_PYTHON_DIR}" DIRECTORY)
+
     # Set Python3_ROOT_DIR to prefer venv Python
     set(Python3_ROOT_DIR "${VENV_ROOT}")
     message(STATUS "Using Python from .venv: ${VENV_PYTHON}")
@@ -47,6 +49,7 @@ if(NOT Torch_DIR)
     # Verify the path exists and contains TorchConfig.cmake
     if(TORCH_CMAKE_PREFIX_PATH AND EXISTS "${TORCH_CMAKE_PREFIX_PATH}")
         set(TORCH_CONFIG_FILE "${TORCH_CMAKE_PREFIX_PATH}/Torch/TorchConfig.cmake")
+
         if(EXISTS "${TORCH_CONFIG_FILE}")
             list(APPEND CMAKE_PREFIX_PATH "${TORCH_CMAKE_PREFIX_PATH}")
             set(Torch_DIR "${TORCH_CMAKE_PREFIX_PATH}/Torch")
@@ -73,6 +76,7 @@ if(NOT TORCH_INCLUDE_DIRS)
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET
     )
+
     if(TORCH_INCLUDE_DIR AND EXISTS "${TORCH_INCLUDE_DIR}")
         set(TORCH_INCLUDE_DIRS "${TORCH_INCLUDE_DIR}")
         message(STATUS "Found Torch include directory: ${TORCH_INCLUDE_DIRS}")
@@ -86,14 +90,23 @@ enable_language(CUDA)
 # set_property(TARGET torch_library PROPERTY INTERFACE_COMPILE_OPTIONS "")
 # set_property(TARGET torch_library PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "")
 
+# Set default build type to Release if not specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+
 # Set CUDA language standard for pybind11 compatibility
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-# CUDA architecture detection (sm86 and above only for faster build)
+# CUDA architecture detection (sm86 only for faster build, matching setup.py)
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES "86;89;90")
+    set(CMAKE_CUDA_ARCHITECTURES "86")
 endif()
+
+message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 
 # Collect all .cu files in the current directory
 file(GLOB_RECURSE CUDA_SOURCES "*.cu")
@@ -125,7 +138,15 @@ target_link_libraries(cuda_ops PRIVATE
 # Set output directory
 set_target_properties(cuda_ops PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_SEPARABLE_COMPILATION OFF
+)
+
+# Add optimization flags
+target_compile_options(cuda_ops PRIVATE
+    $<$<CONFIG:Release>:-O3>
+    $<$<COMPILE_LANGUAGE:CUDA>:
+    $<$<CONFIG:Release>:-O3 --use_fast_math>
+    >
 )
 
 # Compiler-specific options

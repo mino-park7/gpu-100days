@@ -52,3 +52,17 @@ def gray_scale(image: torch.Tensor) -> torch.Tensor:
         Grayscale image tensor
     """
     ...
+
+def seeded_dropout(x: torch.Tensor, p: float, seed: int) -> torch.Tensor:
+    """
+    Apply seeded dropout to a tensor using CUDA kernel.
+
+    Args:
+        x: Input tensor (must be on CUDA)
+        p: Dropout probability
+        seed: Random seed
+    ...
+
+    Returns:
+        Dropout tensor
+    """

@@ -54,14 +54,44 @@ pip install -e .
 
 빌드가 완료되면 CUDA 확장 모듈(`cuda_ops`)이 설치됩니다.
 
+### 빌드 캐시 정리 (빌드 문제 해결)
+
+빌드 설정을 변경한 후에는 기존 빌드 캐시를 정리하는 것이 좋습니다:
+
+```bash
+# setuptools 빌드 캐시 정리
+rm -rf build/ dist/ *.egg-info
+rm -rf src/*.so src/*.egg-info
+
+# CMake 빌드 캐시 정리 (직접 빌드한 경우)
+rm -rf csrc/build/
+
+# 완전히 재빌드
+pip install -e . --force-reinstall --no-cache-dir
+```
+
+또는 CMake를 직접 사용한 경우:
+
+```bash
+cd csrc/build
+rm -rf *
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+make
+```
+
 ### CMake를 사용한 직접 빌드 (선택사항)
 
 ```bash
 cd csrc
 mkdir build && cd build
-cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
 make
 ```
+
+**참고**: 빌드 성능 최적화를 위해 다음 설정이 적용됩니다:
+- Release 모드 기본 사용 (최적화 플래그 포함)
+- 단일 CUDA 아키텍처 컴파일 (sm_86, setup.py와 일치)
+- 최적화 플래그: `-O3`, `--use_fast_math`
 
 ## 💻 사용법
 
