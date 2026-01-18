@@ -448,3 +448,52 @@ def add_triton(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _add_kernel[grid](x, y, out, n_elements, BLOCK_SIZE=tl.constexpr(256))
     return out
+
+
+@triton.jit
+def _matrix_transpose_kernel(
+    input_ptr, output_ptr, M: int, N: int, BLOCK_SIZE: tl.constexpr
+) -> None:
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+
+    row_start = pid_x * BLOCK_SIZE
+    col_start = pid_y * BLOCK_SIZE
+
+    row_indices = row_start + tl.arange(0, BLOCK_SIZE)
+    col_indices = col_start + tl.arange(0, BLOCK_SIZE)
+
+    input_row_indices = row_indices[:, None]
+    input_col_indices = col_indices[None, :]
+
+    input_row_mask = input_row_indices < M
+    input_col_mask = input_col_indices < N
+    valid_input_mask = input_row_mask & input_col_mask
+
+    input_flat_indices = input_row_indices * N + input_col_indices
+    input_A = tl.load(input_ptr + input_flat_indices, mask=valid_input_mask, other=0.0)
+
+    output_row_indices = col_indices[None, :]
+    output_col_indices = row_indices[:, None]
+    output_row_mask = output_row_indices < N
+    output_col_mask = output_col_indices < M
+    valid_output_mask = output_row_mask & output_col_mask
+
+    output_flat_indices = output_row_indices * M + output_col_indices
+    tl.store(output_ptr + output_flat_indices, input_A, mask=valid_output_mask)
+
+
+def matrix_transpose_triton(input: torch.Tensor) -> torch.Tensor:
+    if not input.is_cuda:
+        raise TritonExtensionError("Input tensor must be on CUDA device")
+    possible_dim = 2
+    if input.dim() != possible_dim:
+        raise TritonExtensionError(f"Input tensor must be a {possible_dim}D tensor")
+    if not input.is_contiguous():
+        input = input.contiguous()
+
+    M, N = input.shape
+    out = torch.empty((N, M), dtype=input.dtype, device=input.device)
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE"]), triton.cdiv(N, meta["BLOCK_SIZE"]))
+    _matrix_transpose_kernel[grid](input, out, M, N, BLOCK_SIZE=tl.constexpr(16))
+    return out
