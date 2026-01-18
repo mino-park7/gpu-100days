@@ -6,6 +6,7 @@ def main() -> None:
 try:
     from .cuda_kernels import gray_scale, matrix_add, matrix_sub, seeded_dropout, vector_add
     from .triton_kernels import (
+        add_triton,
         grey_scale_triton,
         matrix_add_triton,
         matrix_multiply_triton,
@@ -24,6 +25,7 @@ try:
         "matrix_multiply_triton",
         "seeded_dropout_triton",
         "seeded_dropout",
+        "add_triton",
     ]
 except ImportError:
     # Extension not built yet

@@ -27,7 +27,12 @@ def test_matrix_multiply_triton(M, N, K):
 
 
 if __name__ == "__main__":
+    from pathlib import Path
+
     import triton
+
+    pwd = Path(__file__).resolve().parent
+    (pwd / "day5").mkdir(parents=True, exist_ok=True)
 
     configs = []
     benchmark_config = triton.testing.Benchmark(
@@ -60,4 +65,4 @@ if __name__ == "__main__":
         perf = lambda ms: 2 * M * N * K * 1e-12 / (ms * 1e-3)
         return perf(ms), perf(max_ms), perf(min_ms)
 
-    benchmark.run(print_data=True, show_plots=True, save_path=".")
+    benchmark.run(print_data=True, show_plots=True, save_path=pwd / "day5")

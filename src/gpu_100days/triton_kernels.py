@@ -415,3 +415,36 @@ def seeded_dropout_triton(x: torch.Tensor, p: float, seed: int = 42) -> torch.Te
     _seeded_dropout[grid](x, output, n_elements, p, seed, BLOCK_SIZE=tl.constexpr(256))
 
     return output
+
+
+@triton.jit
+def _add_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr) -> None:
+    pid = tl.program_id(0)
+
+    block_start = pid * BLOCK_SIZE
+
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+
+    mask = offsets < n_elements
+
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    y = tl.load(y_ptr + offsets, mask=mask, other=0.0)
+
+    out = x + y
+
+    tl.store(out_ptr + offsets, out, mask=mask)
+
+
+def add_triton(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    if not x.is_cuda or not y.is_cuda:
+        raise TritonExtensionError("Both tensors must be on CUDA device")
+    if x.dtype != y.dtype:
+        raise TritonExtensionError("Both tensors must have the same dtype")
+    if x.shape != y.shape:
+        raise TritonExtensionError("Both tensors must have the same shape")
+
+    n_elements = x.numel()
+    out = torch.empty_like(x)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    _add_kernel[grid](x, y, out, n_elements, BLOCK_SIZE=tl.constexpr(256))
+    return out
