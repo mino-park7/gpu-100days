@@ -156,9 +156,13 @@ gpu-100days/
 | Day | 주제 | 내용 | 상태 |
 |-----|------|------|------|
 | 1 | 벡터 연산 기초 | Print global indices for 1D vector<br>GPU 벡터 덧셈 (메모리 할당, 호스트-디바이스 전송) | [x] |
-| 2 | Add matrix | Matrix 덧셈 cuda , triton                                                       | [x] |
-| 3 | Sub matrix for multiple data type| Matrix 뺄셈 cuda, triton                                                       | [x] |
-| 4 | GrayScaler using CUDA and Triton | RGB image를 Gray 스케일로 변환 | [x] |
+| 2 | Add matrix | Matrix 덧셈 CUDA, Triton | [x] |
+| 3 | Sub matrix for multiple data type | Matrix 뺄셈 CUDA, Triton (다양한 데이터 타입 지원) | [x] |
+| 4 | GrayScaler using CUDA and Triton | RGB image를 Gray 스케일로 변환 (CUDA, Triton) | [x] |
+| 5 | Matrix Multiply | Matrix 곱셈 Triton (cuBLAS와 성능 비교) | [x] |
+| 6 | Seeded Dropout | Seeded Dropout CUDA, Triton (재현 가능한 드롭아웃) | [x] |
+| 7 | Add Triton for multiple data type | Add 연산 Triton (다양한 데이터 타입 지원, 성능 벤치마크) | [x] |
+| 8 | Matrix Transpose | Matrix 전치 CUDA, Triton (다양한 데이터 타입 지원) | [x] |
 
 ## 📖 참고 자료
 

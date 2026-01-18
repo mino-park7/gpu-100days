@@ -133,3 +133,23 @@ def seeded_dropout(x: torch.Tensor, p: float, seed: int) -> torch.Tensor:
         x = x.contiguous()
 
     return cuda_ops.seeded_dropout(x, p, seed)
+
+
+def matrix_transpose(input: torch.Tensor) -> torch.Tensor:
+    """
+    Transpose a matrix using CUDA kernel.
+
+    Args:
+        input: Input tensor (must be on CUDA)
+
+    Returns:
+        Transposed tensor
+    """
+    possible_dim = 2
+    if not input.is_cuda:
+        raise CUDAExtensionError("Input tensor must be on CUDA device")
+    if input.dim() != possible_dim:
+        raise CUDAExtensionError(f"Input tensor must be a {possible_dim}D tensor")
+    if not input.is_contiguous():
+        input = input.contiguous()
+    return cuda_ops.matrix_transpose(input)

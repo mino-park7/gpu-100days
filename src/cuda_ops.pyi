@@ -66,3 +66,15 @@ def seeded_dropout(x: torch.Tensor, p: float, seed: int) -> torch.Tensor:
     Returns:
         Dropout tensor
     """
+
+def matrix_transpose(input: torch.Tensor) -> torch.Tensor:
+    """
+    Transpose a matrix using CUDA kernel.
+
+    Args:
+        input: Input tensor (must be on CUDA)
+
+    Returns:
+        Transposed tensor
+    """
+    ...
