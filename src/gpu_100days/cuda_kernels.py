@@ -153,3 +153,25 @@ def matrix_transpose(input: torch.Tensor) -> torch.Tensor:
     if not input.is_contiguous():
         input = input.contiguous()
     return cuda_ops.matrix_transpose(input)
+
+
+def softmax(input: torch.Tensor) -> torch.Tensor:
+    """
+    Apply softmax to a tensor using CUDA kernel.
+
+    Args:
+        input: Input tensor (must be on CUDA)
+
+    Returns:
+        Softmax tensor
+    """
+    possible_dim = 2
+    if not input.is_cuda:
+        raise CUDAExtensionError("Input tensor must be on CUDA device")
+    if input.dim() != possible_dim:
+        raise CUDAExtensionError(f"Input tensor must be a {possible_dim}D tensor")
+    if not input.is_contiguous():
+        input = input.contiguous()
+    if input.dtype != torch.float32:
+        raise CUDAExtensionError("Input tensor must be float32")
+    return cuda_ops.softmax(input)

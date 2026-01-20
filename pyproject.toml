@@ -36,6 +36,7 @@ default = true
 
 [tool.uv]
 default-groups = ["dev"]
+compile-bytecode = true
 
 [tool.ruff]
 target-version = "py311"

@@ -3,7 +3,7 @@ import torch
 import triton
 from conftest import benchmark_kernel_vs_pytorch
 
-from gpu_100days import softmax_triton
+from gpu_100days import softmax, softmax_triton
 
 
 def naive_softmax(x: torch.Tensor) -> torch.Tensor:
@@ -33,6 +33,24 @@ def test_softmax_triton(shape):
     assert torch.allclose(y, naive_softmax(x))
     benchmark_kernel_vs_pytorch(softmax_triton, naive_softmax, x)
     benchmark_kernel_vs_pytorch(softmax_triton, torch.nn.functional.softmax, x)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (1000, 1000),
+        (1000, 10000),
+        (10000, 1000),
+        (10000, 10000),
+    ],
+)
+def test_softmax_cuda(shape):
+    x = torch.randn(shape, device="cuda")
+    y = softmax(x)
+    assert y.shape == x.shape
+    assert torch.allclose(y, naive_softmax(x))
+    benchmark_kernel_vs_pytorch(softmax, naive_softmax, x)
+    benchmark_kernel_vs_pytorch(softmax, torch.nn.functional.softmax, x)
 
 
 @triton.testing.perf_report(

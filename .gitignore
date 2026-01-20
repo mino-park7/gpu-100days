@@ -205,3 +205,5 @@ Thumbs.db
 *.so
 src/*.so
 src/*.egg-info/
+
+.claude/plans/

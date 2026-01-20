@@ -10,6 +10,7 @@ try:
         matrix_sub,
         matrix_transpose,
         seeded_dropout,
+        softmax,
         vector_add,
     )
     from .triton_kernels import (
@@ -38,6 +39,7 @@ try:
         "seeded_dropout",
         "add_triton",
         "softmax_triton",
+        "softmax",
     ]
 except ImportError:
     # Extension not built yet
