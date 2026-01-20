@@ -1,4 +1,5 @@
 import contextlib
+import os
 from pathlib import Path
 
 from setuptools import setup
@@ -16,10 +17,14 @@ cu_files = [str(f.relative_to(this_dir)) for f in cu_files_abs]
 # Get PyTorch include directories
 torch_include_dirs = include_paths()
 
+# Enable ccache for CUDA compilation
+os.environ["CCACHE_COMPILERTYPE"] = "nvcc"
+os.environ["CCACHE_BASEDIR"] = str(this_dir)
+# Point nvcc to use ccache (CMake will pick this up)
+os.environ["CUDAHOSTCXX"] = "ccache g++"
+
 # Get PyTorch cmake path for Torch_DIR and ensure include paths are set
 try:
-    import os
-
     import torch
 
     # Get torch include directory directly
@@ -61,11 +66,15 @@ class CustomBuildExtension(BuildExtension):
     def __init__(self, *args, **kwargs):
         # Enable compile_commands.json generation
         # This works with both CMake and ninja builds
-        import os
+        import multiprocessing
 
         super().__init__(*args, **kwargs)
         # Set environment variable for CMake
         os.environ["CMAKE_EXPORT_COMPILE_COMMANDS"] = "ON"
+
+        # Limit parallel jobs to avoid overwhelming system
+        max_jobs = min(multiprocessing.cpu_count(), 8)
+        os.environ["MAX_JOBS"] = str(max_jobs)
 
     def build_extensions(self):
         # Ensure compile_commands.json is generated
@@ -100,6 +109,8 @@ ext_modules = [
             "nvcc": [
                 "-O3",
                 "--use_fast_math",
+                "-lineinfo",  # Lightweight debug info instead of -g (faster compilation)
+                "--ptxas-options=-O3",  # PTX assembly optimization
                 # Use -gencode to compile for sm86 and above only (faster build)
                 # Format: -gencode arch=compute_XX,code=sm_XX
                 "-gencode",

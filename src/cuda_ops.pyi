@@ -78,3 +78,15 @@ def matrix_transpose(input: torch.Tensor) -> torch.Tensor:
         Transposed tensor
     """
     ...
+
+def softmax(input: torch.Tensor) -> torch.Tensor:
+    """
+    Apply softmax to a tensor using CUDA kernel.
+
+    Args:
+        input: Input tensor (must be on CUDA)
+
+    Returns:
+        Softmax tensor
+    """
+    ...

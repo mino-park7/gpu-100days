@@ -7,6 +7,7 @@ torch::Tensor matrix_sub(torch::Tensor a, torch::Tensor b);
 torch::Tensor gray_scale(torch::Tensor image);
 torch::Tensor seeded_dropout(torch::Tensor x, float p, int seed);
 torch::Tensor matrix_transpose(torch::Tensor input);
+torch::Tensor softmax(torch::Tensor input);
 // PyTorch bindings
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("vector_add", &vector_add, "CUDA vector addition");
@@ -15,4 +16,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("gray_scale", &gray_scale, "CUDA grayscale conversion");
     m.def("seeded_dropout", &seeded_dropout, "CUDA seeded dropout");
     m.def("matrix_transpose", &matrix_transpose, "CUDA matrix transpose");
+    m.def("softmax", &softmax, "CUDA softmax");
 }
