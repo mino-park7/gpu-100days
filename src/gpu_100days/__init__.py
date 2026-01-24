@@ -16,6 +16,7 @@ try:
     from .triton_kernels import (
         add_triton,
         grey_scale_triton,
+        layer_norm_fused,
         matrix_add_triton,
         matrix_multiply_triton,
         matrix_sub_triton,
@@ -25,21 +26,21 @@ try:
     )
 
     __all__ = [
+        "add_triton",
+        "gray_scale",
+        "grey_scale_triton",
         "matrix_add",
         "matrix_add_triton",
-        "matrix_transpose",
-        "matrix_transpose_triton",
-        "vector_add",
+        "matrix_multiply_triton",
         "matrix_sub",
         "matrix_sub_triton",
-        "grey_scale_triton",
-        "gray_scale",
-        "matrix_multiply_triton",
-        "seeded_dropout_triton",
+        "matrix_transpose",
+        "matrix_transpose_triton",
         "seeded_dropout",
-        "add_triton",
-        "softmax_triton",
+        "seeded_dropout_triton",
         "softmax",
+        "softmax_triton",
+        "vector_add",
     ]
 except ImportError:
     # Extension not built yet
