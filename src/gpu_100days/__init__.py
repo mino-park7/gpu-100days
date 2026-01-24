@@ -13,6 +13,7 @@ try:
         softmax,
         vector_add,
     )
+    from .flash_attention import flash_attn_func
     from .triton_kernels import (
         add_triton,
         grey_scale_triton,
@@ -41,6 +42,7 @@ try:
         "softmax",
         "softmax_triton",
         "vector_add",
+        "flash_attn_func",
     ]
 except ImportError:
     # Extension not built yet
