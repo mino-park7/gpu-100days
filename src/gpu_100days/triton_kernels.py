@@ -165,7 +165,7 @@ def grey_scale_triton(image: torch.Tensor) -> torch.Tensor:
     if not image.is_contiguous():
         image = image.contiguous()
 
-    channel, height, width = image.shape
+    _channel, height, width = image.shape
 
     out = torch.empty((height, width), dtype=image.dtype, device=image.device)
 
@@ -554,3 +554,103 @@ def softmax_triton(x: torch.Tensor) -> torch.Tensor:
     )
 
     return y
+
+
+@triton.jit
+def _layer_norm_fwd_fused(
+    x_ptr,
+    y_ptr,
+    w_ptr,
+    b_ptr,
+    mean_ptr,
+    rstd_ptr,
+    stride,
+    n_elements,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+) -> None:
+    row = tl.program_id(0)
+    x_ptr += row * stride
+    y_ptr += row * stride
+
+    _mean = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for off in range(0, n_elements, BLOCK_SIZE):
+        cols = off + tl.arange(0, BLOCK_SIZE)
+        x_row = tl.load(x_ptr + cols, mask=cols < n_elements, other=0.0).to(tl.float32)
+        _mean += x_row
+    mean = tl.sum(_mean, axis=0) / n_elements
+
+    _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for off in range(0, n_elements, BLOCK_SIZE):
+        cols = off + tl.arange(0, BLOCK_SIZE)
+        x = tl.load(x_ptr + cols, mask=cols < n_elements, other=0.0).to(tl.float32)
+        x = tl.where(cols < n_elements, x - mean, 0.0)
+        _var += x * x
+
+    var = tl.sum(_var, axis=0) / n_elements
+
+    rstd = 1.0 / tl.sqrt(var + eps)
+
+    tl.store(mean_ptr + row, mean)
+    tl.store(rstd_ptr + row, rstd)
+
+    for off in range(0, n_elements, BLOCK_SIZE):
+        cols = off + tl.arange(0, BLOCK_SIZE)
+        mask = cols < n_elements
+        w = tl.load(w_ptr + cols, mask=mask)
+        b = tl.load(b_ptr + cols, mask=mask)
+        x = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+        x_hat = (x - mean) * rstd
+        y = x_hat * w + b
+        tl.store(y_ptr + cols, y, mask=mask)
+
+
+class LayerNormFused(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        x: torch.Tensor,
+        normalized_shape: tuple[int, ...],
+        weight: torch.Tensor,
+        bias: torch.Tensor,
+        eps: float,
+    ) -> torch.Tensor:
+        y = torch.empty_like(x)
+
+        x_arg = x.reshape(-1, x.shape[-1])
+        M, N = x_arg.shape
+
+        mean = torch.empty((M,), dtype=torch.float32, device=x.device)
+        rstd = torch.empty((M,), dtype=torch.float32, device=x.device)
+
+        MAX_FUSED_SIZE = 65536 // x.element_size()
+        BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(N))
+
+        if N > BLOCK_SIZE:
+            raise RuntimeError("This layer norm doesn't support feature dim > >= 64KB.")
+
+        num_warps = min(max(BLOCK_SIZE // 256, 1), 8)
+
+        _layer_norm_fwd_fused[(M,)](
+            x_arg,
+            y,
+            weight,
+            bias,
+            mean,
+            rstd,
+            x_arg.stride(0),
+            N,
+            eps,
+            BLOCK_SIZE=tl.constexpr(BLOCK_SIZE),
+            num_warps=num_warps,  # type: ignore
+            num_ctas=1,  # type: ignore
+        )
+
+        ctx.save_for_backward(x, weight, bias, mean, rstd)
+        ctx.BLOCK_SIZE = BLOCK_SIZE
+        ctx.eps = eps
+
+        return y
+
+
+layer_norm_fused = LayerNormFused.apply
