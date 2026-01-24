@@ -8,6 +8,7 @@ Based on the official Triton Flash Attention tutorial:
 https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
 """
 # ruff: noqa: ARG001, PLW2901, B007, E741, PLR0915, C408, SIM108
+# pyright: reportGeneralTypeIssues=false, reportInvalidTypeVarUse=false, reportUnknownArgumentType=false, reportInvalidMethodOverride=false, reportPossiblyMissingAttribute=false, reportNonSubscriptable=false, reportInvalidAssignment=false
 
 import gc
 import os
@@ -75,7 +76,7 @@ def _attn_fwd_inner(
         k = tl.load(K_block_ptr)
         qk = tl.dot(q, k)
         if STAGE == 2:
-            mask = offs_m[:, None] >= (start_n + offs_n[None, :])
+            mask = offs_m[:, None] >= (start_n + offs_n[None, :])  # type: ignore[operator]
             qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
             m_ij = tl.maximum(m_i, tl.max(qk, 1))
             qk -= m_ij[:, None]
@@ -465,7 +466,7 @@ def _attn_bwd(
     HEAD_DIM: tl.constexpr,
     CAUSAL: tl.constexpr,
 ):
-    LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
+    LN2: tl.constexpr = tl.constexpr(0.6931471824645996)  # = ln(2)
 
     bhid = tl.program_id(2)
     off_chz = (bhid * N_CTX).to(tl.int64)
@@ -694,7 +695,7 @@ class _attention(torch.autograd.Function):
         return o
 
     @staticmethod
-    def backward(ctx, do):
+    def backward(ctx, do):  # type: ignore[override]
         q, k, v, o, M = ctx.saved_tensors
         assert do.is_contiguous()
         assert q.stride() == k.stride() == v.stride() == o.stride() == do.stride()
@@ -720,7 +721,7 @@ class _attention(torch.autograd.Function):
             BATCH,
             N_HEAD,
             N_CTX,
-            BLOCK_M=PRE_BLOCK,
+            BLOCK_M=PRE_BLOCK,  # type: ignore[arg-type]
             HEAD_DIM=ctx.HEAD_DIM,
         )
         grid = (N_CTX // BLOCK_N1, 1, BATCH * N_HEAD)
@@ -741,14 +742,14 @@ class _attention(torch.autograd.Function):
             q.stride(3),
             N_HEAD,
             N_CTX,
-            BLOCK_M1=BLOCK_M1,
-            BLOCK_N1=BLOCK_N1,
-            BLOCK_M2=BLOCK_M2,
-            BLOCK_N2=BLOCK_N2,
-            BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,
+            BLOCK_M1=BLOCK_M1,  # type: ignore[arg-type]
+            BLOCK_N1=BLOCK_N1,  # type: ignore[arg-type]
+            BLOCK_M2=BLOCK_M2,  # type: ignore[arg-type]
+            BLOCK_N2=BLOCK_N2,  # type: ignore[arg-type]
+            BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  # type: ignore[arg-type]
             HEAD_DIM=ctx.HEAD_DIM,
-            num_warps=NUM_WARPS,
-            num_stages=NUM_STAGES,
+            num_warps=NUM_WARPS,  # type: ignore[arg-type]
+            num_stages=NUM_STAGES,  # type: ignore[arg-type]
             CAUSAL=ctx.causal,
         )
 
@@ -804,24 +805,25 @@ def test_op(Z, H, N_CTX, HEAD_DIM, causal, mode, dtype=torch.float16):
     if mode == "bwd":
         dout = torch.randn_like(q)
         ref_out.backward(dout)
-        ref_dv, v.grad = v.grad.clone(), None
-        ref_dk, k.grad = k.grad.clone(), None
-        ref_dq, q.grad = q.grad.clone(), None
+        ref_dv, v.grad = (v.grad.clone() if v.grad is not None else None), None  # type: ignore[union-attr]
+        ref_dk, k.grad = (k.grad.clone() if k.grad is not None else None), None  # type: ignore[union-attr]
+        ref_dq, q.grad = (q.grad.clone() if q.grad is not None else None), None  # type: ignore[union-attr]
     # triton implementation
     tri_out = attention(q, k, v, causal, sm_scale).half()
     if mode == "fwd":
         torch.testing.assert_close(tri_out, ref_out, atol=1e-2, rtol=0)
         return
     tri_out.backward(dout)
-    tri_dv, v.grad = v.grad.clone(), None
-    tri_dk, k.grad = k.grad.clone(), None
-    tri_dq, q.grad = q.grad.clone(), None
+    tri_dv, v.grad = (v.grad.clone() if v.grad is not None else None), None  # type: ignore[union-attr]
+    tri_dk, k.grad = (k.grad.clone() if k.grad is not None else None), None  # type: ignore[union-attr]
+    tri_dq, q.grad = (q.grad.clone() if q.grad is not None else None), None  # type: ignore[union-attr]
     # compare
     torch.testing.assert_close(tri_out, ref_out, atol=1e-2, rtol=0)
     rtol = 0.0
     # Relative tolerance workaround for known hardware limitation of CDNA2 GPU.
     if (
-        torch.version.hip is not None
+        hasattr(torch.__version__, "hip")
+        and torch.version.hip is not None  # type: ignore[attr-defined]
         and triton.runtime.driver.active.get_current_target().arch == "gfx90a"
     ):
         rtol = 1e-2

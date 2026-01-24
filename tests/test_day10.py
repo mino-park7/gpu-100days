@@ -50,10 +50,10 @@ def test_layer_norm_fused_bwd(shape, dtype):
     y_tri = layer_norm_fused(x, normalized_shape, weight, bias, eps)
     y_ref = torch_layer_norm(x, normalized_shape, weight, bias, eps)
     y_tri.backward(dy, retain_graph=True)
-    dx_tri, dw_tri, db_tri = (_.grad.clone() for _ in [x, weight, bias])
+    dx_tri, dw_tri, db_tri = (_.grad.clone() for _ in [x, weight, bias])  # type: ignore[union-attr]
     x.grad, weight.grad, bias.grad = None, None, None
     y_ref.backward(dy, retain_graph=True)
-    dx_ref, dw_ref, db_ref = (_.grad.clone() for _ in [x, weight, bias])
+    dx_ref, dw_ref, db_ref = (_.grad.clone() for _ in [x, weight, bias])  # type: ignore[union-attr]
 
     assert torch.allclose(y_tri, y_ref, atol=1e-2, rtol=0)
     assert torch.allclose(dx_tri, dx_ref, atol=1e-2, rtol=0)
