@@ -23,11 +23,13 @@ try:
         matrix_sub_triton,
         matrix_transpose_triton,
         seeded_dropout_triton,
+        silu_triton,
         softmax_triton,
     )
 
     __all__ = [
         "add_triton",
+        "flash_attn_func",
         "gray_scale",
         "grey_scale_triton",
         "matrix_add",
@@ -39,10 +41,10 @@ try:
         "matrix_transpose_triton",
         "seeded_dropout",
         "seeded_dropout_triton",
+        "silu_triton",
         "softmax",
         "softmax_triton",
         "vector_add",
-        "flash_attn_func",
     ]
 except ImportError:
     # Extension not built yet
