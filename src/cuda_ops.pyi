@@ -90,3 +90,15 @@ def softmax(input: torch.Tensor) -> torch.Tensor:
         Softmax tensor
     """
     ...
+
+def silu(input: torch.Tensor) -> torch.Tensor:
+    """
+    Apply silu to a tensor using CUDA kernel.
+
+    Args:
+        input: Input tensor (must be on CUDA)
+
+    Returns:
+        Silu tensor
+    """
+    ...
