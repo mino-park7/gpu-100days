@@ -175,3 +175,19 @@ def softmax(input: torch.Tensor) -> torch.Tensor:
     if input.dtype != torch.float32:
         raise CUDAExtensionError("Input tensor must be float32")
     return cuda_ops.softmax(input)
+
+
+def silu(input: torch.Tensor) -> torch.Tensor:
+    """
+    Apply silu to a tensor using CUDA kernel.
+
+    Args:
+        input: Input tensor (must be on CUDA)
+    """
+    if not input.is_cuda:
+        raise CUDAExtensionError("Input tensor must be on CUDA device")
+    if input.dtype not in [torch.float16, torch.float32, torch.bfloat16]:
+        raise CUDAExtensionError("Input tensor must be float16, float32, or bfloat16")
+    if not input.is_contiguous():
+        input = input.contiguous()
+    return cuda_ops.silu(input)

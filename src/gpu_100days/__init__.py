@@ -10,6 +10,7 @@ try:
         matrix_sub,
         matrix_transpose,
         seeded_dropout,
+        silu,
         softmax,
         vector_add,
     )
@@ -41,6 +42,7 @@ try:
         "matrix_transpose_triton",
         "seeded_dropout",
         "seeded_dropout_triton",
+        "silu",
         "silu_triton",
         "softmax",
         "softmax_triton",
