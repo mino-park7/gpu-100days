@@ -749,7 +749,7 @@ class LayerNormFused(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dy: torch.Tensor):  # type: ignore
-        x, w, b, m, v = ctx.saved_tensors
+        x, w, _b, m, v = ctx.saved_tensors
         N = w.shape[0]
         GROUP_SIZE_M = 64
         if N <= 8192:
@@ -801,3 +801,32 @@ class LayerNormFused(torch.autograd.Function):
 
 
 layer_norm_fused = LayerNormFused.apply
+
+
+@triton.jit
+def _silu_kernel(input_ptr, output_ptr, n_elements: int, BLOCK_SIZE: tl.constexpr) -> None:
+    start = tl.program_id(0) * BLOCK_SIZE
+    offsets = start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x_orig = tl.load(input_ptr + offsets, mask=mask, other=0.0)
+    x = x_orig.to(tl.float32)
+    y = (x * tl.sigmoid(x)).to(x_orig.dtype)
+    tl.store(output_ptr + offsets, y, mask=mask)
+
+
+def silu_triton(x: torch.Tensor) -> torch.Tensor:
+    if not x.is_cuda:
+        raise TritonExtensionError("Tensor must be on CUDA device")
+    if x.dtype not in [torch.float16, torch.float32, torch.float64, torch.bfloat16]:
+        raise TritonExtensionError("Tensor must be float16, float32, or bfloat16")
+
+    out = torch.empty_like(x)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    n_elements = x.numel()
+    _silu_kernel[grid](
+        x,
+        out,
+        n_elements,
+        BLOCK_SIZE=tl.constexpr(16),
+    )
+    return out
