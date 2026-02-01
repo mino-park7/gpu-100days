@@ -9,6 +9,8 @@ torch::Tensor seeded_dropout(torch::Tensor x, float p, int seed);
 torch::Tensor matrix_transpose(torch::Tensor input);
 torch::Tensor softmax(torch::Tensor input);
 torch::Tensor silu(torch::Tensor input);
+std::tuple<torch::Tensor, torch::Tensor> rope(torch::Tensor q, torch::Tensor k, torch::Tensor cos,
+                                              torch::Tensor sin);
 // PyTorch bindings
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("vector_add", &vector_add, "CUDA vector addition");
@@ -19,4 +21,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("matrix_transpose", &matrix_transpose, "CUDA matrix transpose");
     m.def("softmax", &softmax, "CUDA softmax");
     m.def("silu", &silu, "CUDA silu");
+    m.def("rope", &rope, "CUDA RoPE");
 }

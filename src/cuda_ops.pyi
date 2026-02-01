@@ -102,3 +102,16 @@ def silu(input: torch.Tensor) -> torch.Tensor:
         Silu tensor
     """
     ...
+
+def rope(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply RoPE to query and key tensors using CUDA kernel.
+
+    Args:
+        q: Query tensor (must be on CUDA)
+        k: Key tensor (must be on CUDA)
+        cos: Cosine values (must be on CUDA)
+        sin: Sine values (must be on CUDA)
+    """

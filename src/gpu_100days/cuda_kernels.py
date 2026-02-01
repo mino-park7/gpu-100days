@@ -191,3 +191,40 @@ def silu(input: torch.Tensor) -> torch.Tensor:
     if not input.is_contiguous():
         input = input.contiguous()
     return cuda_ops.silu(input)
+
+
+def rope(
+    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply RoPE to query and key tensors using CUDA kernel.
+
+    Args:
+        q: Query tensor (must be on CUDA)
+        k: Key tensor (must be on CUDA)
+        cos: Cosine values (must be on CUDA)
+        sin: Sine values (must be on CUDA)
+    """
+    if not q.is_cuda or not k.is_cuda or not cos.is_cuda or not sin.is_cuda:
+        raise CUDAExtensionError("All tensors must be on CUDA device")
+    if q.dtype not in [torch.float16, torch.float32, torch.bfloat16]:
+        raise CUDAExtensionError("All tensors must be float16, float32, or bfloat16")
+    if q.shape != k.shape:
+        raise CUDAExtensionError("Query and key tensors must have the same shape")
+    if cos.shape != sin.shape:
+        raise CUDAExtensionError("Cosine and sine tensors must have the same shape")
+    if q.shape[-1] % 2 != 0:
+        raise CUDAExtensionError("head_dim must be even for RoPE")
+    if cos.shape[-1] != q.shape[-1] // 2:
+        raise CUDAExtensionError("cos shape must be (seq_len, head_dim // 2)")
+    if sin.shape[-1] != q.shape[-1] // 2:
+        raise CUDAExtensionError("sin shape must be (seq_len, head_dim // 2)")
+    if q.shape[0] != k.shape[0]:
+        raise CUDAExtensionError("Batch size must be the same")
+    if q.shape[1] != k.shape[1]:
+        raise CUDAExtensionError("Sequence length must be the same")
+    if q.shape[2] != k.shape[2]:
+        raise CUDAExtensionError("Number of heads must be the same")
+    if q.shape[3] != k.shape[3]:
+        raise CUDAExtensionError("Head dimension must be the same")
+    return cuda_ops.rope(q, k, cos, sin)
