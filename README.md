@@ -163,6 +163,12 @@ gpu-100days/
 | 6 | Seeded Dropout | Seeded Dropout CUDA, Triton (재현 가능한 드롭아웃) | [x] |
 | 7 | Add Triton for multiple data type | Add 연산 Triton (다양한 데이터 타입 지원, 성능 벤치마크) | [x] |
 | 8 | Matrix Transpose | Matrix 전치 CUDA, Triton (다양한 데이터 타입 지원) | [x] |
+| 9 | Softmax | Softmax CUDA, Triton (PyTorch와 성능 비교) | [x] |
+| 10 | Layer Norm Fused | Layer Normalization Fused Triton (Forward/Backward, 다양한 데이터 타입 지원) | [x] |
+| 11 | Flash Attention | Flash Attention Triton (Causal/Non-causal, 다양한 헤드 차원 지원) | [x] |
+| 12 | SiLU (Triton) | SiLU (Sigmoid Linear Unit) Triton (다양한 데이터 타입 지원) | [x] |
+| 13 | SiLU (CUDA) | SiLU (Sigmoid Linear Unit) CUDA (다양한 데이터 타입 지원) | [x] |
+| 14 | - | - | [ ] |
 
 ## 📖 참고 자료
 
