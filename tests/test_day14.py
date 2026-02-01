@@ -1,0 +1,228 @@
+import pytest
+import torch
+import triton
+from conftest import benchmark_kernel_vs_pytorch
+
+from gpu_100days import rope_triton
+
+torch.manual_seed(20)
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None):
+    """
+    Apply rotary position embedding to query and key tensors.
+    Reference implementation using PyTorch operations.
+
+    Args:
+        q: Query tensor of shape (batch_size, seq_len, n_heads, head_dim)
+        k: Key tensor of shape (batch_size, seq_len, n_heads, head_dim)
+        cos: Cosine values of shape (seq_len, head_dim // 2)
+        sin: Sine values of shape (seq_len, head_dim // 2)
+        position_ids: Optional position indices of shape (batch_size, seq_len)
+
+    Returns:
+        q_rot: Rotated query tensor
+        k_rot: Rotated key tensor
+    """
+    # Reshape cos and sin to match the tensor dimensions
+    # cos/sin: (seq_len, head_dim // 2) -> (1, seq_len, 1, head_dim // 2)
+    cos = cos.unsqueeze(0).unsqueeze(2)
+    sin = sin.unsqueeze(0).unsqueeze(2)
+
+    # Split head_dim into pairs for rotation
+    # q: (batch_size, seq_len, n_heads, head_dim)
+    # Split into (batch_size, seq_len, n_heads, head_dim // 2, 2)
+    head_dim = q.shape[-1]
+    q_reshaped = q.view(*q.shape[:-1], head_dim // 2, 2)
+    k_reshaped = k.view(*k.shape[:-1], head_dim // 2, 2)
+
+    # Extract real and imaginary parts
+    q_real = q_reshaped[..., 0]
+    q_imag = q_reshaped[..., 1]
+    k_real = k_reshaped[..., 0]
+    k_imag = k_reshaped[..., 1]
+
+    # Apply rotation: [cos -sin; sin cos] @ [real; imag]
+    q_rot_real = q_real * cos - q_imag * sin
+    q_rot_imag = q_real * sin + q_imag * cos
+    k_rot_real = k_real * cos - k_imag * sin
+    k_rot_imag = k_real * sin + k_imag * cos
+
+    # Combine back
+    q_rot = torch.stack([q_rot_real, q_rot_imag], dim=-1).flatten(-2)
+    k_rot = torch.stack([k_rot_real, k_rot_imag], dim=-1).flatten(-2)
+
+    return q_rot, k_rot
+
+
+def generate_rope_freqs(seq_len, head_dim, theta=10000.0, device="cuda", dtype=torch.float32):
+    """
+    Generate rotary position embedding frequencies.
+
+    Args:
+        seq_len: Sequence length
+        head_dim: Head dimension (must be even)
+        theta: Base frequency (default: 10000.0)
+        device: Device to create tensors on
+        dtype: Data type
+
+    Returns:
+        cos: Cosine values of shape (seq_len, head_dim // 2)
+        sin: Sine values of shape (seq_len, head_dim // 2)
+    """
+    assert head_dim % 2 == 0, "head_dim must be even for RoPE"
+
+    # Create position indices
+    positions = torch.arange(seq_len, device=device, dtype=dtype).unsqueeze(1)  # (seq_len, 1)
+
+    # Create frequency indices
+    freqs = 1.0 / (theta ** (torch.arange(0, head_dim, 2, device=device, dtype=dtype) / head_dim))
+    freqs = positions * freqs.unsqueeze(0)  # (seq_len, head_dim // 2)
+
+    # Compute cos and sin
+    cos = torch.cos(freqs)
+    sin = torch.sin(freqs)
+
+    return cos, sin
+
+
+@pytest.mark.parametrize("batch_size", [1, 4])
+@pytest.mark.parametrize("seq_len", [128, 256, 512])
+@pytest.mark.parametrize("n_heads", [8, 16])
+@pytest.mark.parametrize("head_dim", [32, 64, 128])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_rope_triton(batch_size, seq_len, n_heads, head_dim, dtype):
+    """Test RoPE Triton implementation against reference PyTorch implementation."""
+    # Generate input tensors
+    q = torch.randn(batch_size, seq_len, n_heads, head_dim, device="cuda", dtype=dtype)
+    k = torch.randn(batch_size, seq_len, n_heads, head_dim, device="cuda", dtype=dtype)
+
+    # Generate RoPE frequencies
+    cos, sin = generate_rope_freqs(seq_len, head_dim, device="cuda", dtype=dtype)
+
+    # Apply RoPE using Triton
+    q_rot_triton, k_rot_triton = rope_triton(q, k, cos, sin)
+
+    # Apply RoPE using reference implementation
+    q_rot_ref, k_rot_ref = apply_rotary_pos_emb(q, k, cos, sin)
+
+    # Check shapes
+    assert q_rot_triton.shape == q.shape
+    assert k_rot_triton.shape == k.shape
+    assert q_rot_triton.dtype == dtype
+    assert k_rot_triton.dtype == dtype
+    assert q_rot_triton.device.type == "cuda"
+    assert k_rot_triton.device.type == "cuda"
+    assert q_rot_triton.is_contiguous()
+    assert k_rot_triton.is_contiguous()
+
+    # Compare results
+    # RoPE can have numerical differences, especially with lower precision
+    atol = 1e-2 if dtype in [torch.float16, torch.bfloat16] else 1e-5
+    rtol = 1e-2 if dtype in [torch.float16, torch.bfloat16] else 1e-5
+
+    torch.testing.assert_close(q_rot_triton, q_rot_ref, atol=atol, rtol=rtol)
+    torch.testing.assert_close(k_rot_triton, k_rot_ref, atol=atol, rtol=rtol)
+
+    # Benchmark
+    benchmark_kernel_vs_pytorch(
+        lambda q, k, cos, sin: rope_triton(q, k, cos, sin)[0],
+        lambda q, k, cos, sin: apply_rotary_pos_emb(q, k, cos, sin)[0],
+        q,
+        k,
+        cos,
+        sin,
+    )
+
+
+# @pytest.mark.parametrize("batch_size", [1, 4])
+# @pytest.mark.parametrize("seq_len", [128, 256, 512])
+# @pytest.mark.parametrize("n_heads", [8, 16])
+# @pytest.mark.parametrize("head_dim", [32, 64, 128])
+# @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+# def test_rope_triton_gradient(batch_size, seq_len, n_heads, head_dim, dtype):
+#     """Test RoPE Triton implementation with gradient computation."""
+#     # Generate input tensors with gradient tracking
+#     q = torch.randn(batch_size, seq_len, n_heads, head_dim, device="cuda", dtype=dtype, requires_grad=True)
+#     k = torch.randn(batch_size, seq_len, n_heads, head_dim, device="cuda", dtype=dtype, requires_grad=True)
+
+#     # Generate RoPE frequencies
+#     cos, sin = generate_rope_freqs(seq_len, head_dim, device="cuda", dtype=dtype)
+
+#     # Apply RoPE using Triton
+#     q_rot_triton, k_rot_triton = rope_triton(q, k, cos, sin)
+
+#     # Apply RoPE using reference implementation
+#     q_rot_ref, k_rot_ref = apply_rotary_pos_emb(q, k, cos, sin)
+
+#     # Create dummy gradient
+#     dq_rot = torch.randn_like(q_rot_triton)
+
+#     # Backward pass for Triton
+#     q_rot_triton.backward(dq_rot, retain_graph=True)
+#     assert q.grad is not None and k.grad is not None, "Gradients should be computed"
+#     dq_triton = q.grad.clone()
+#     dk_triton = k.grad.clone()
+
+#     # Reset gradients
+#     q.grad = None
+#     k.grad = None
+
+#     # Backward pass for reference
+#     q_rot_ref.backward(dq_rot, retain_graph=True)
+#     assert q.grad is not None and k.grad is not None, "Gradients should be computed"
+#     dq_ref = q.grad.clone()
+#     dk_ref = k.grad.clone()
+
+#     # Compare gradients
+#     atol = 1e-2 if dtype in [torch.float16, torch.bfloat16] else 1e-5
+#     rtol = 1e-2 if dtype in [torch.float16, torch.bfloat16] else 1e-5
+
+#     torch.testing.assert_close(dq_triton, dq_ref, atol=atol, rtol=rtol)
+#     torch.testing.assert_close(dk_triton, dk_ref, atol=atol, rtol=rtol)
+
+
+@triton.testing.perf_report(
+    triton.testing.Benchmark(
+        x_names=["seq_len"],  # argument names to use as an x-axis for the plot
+        x_vals=[64 * i for i in range(2, 33)],  # different possible values for `x_name`
+        line_arg="provider",  # argument name whose value corresponds to a different line in the plot
+        line_vals=["triton", "torch"],  # possible values for `line_arg`
+        line_names=["Triton", "PyTorch"],  # label name for the lines
+        styles=[("blue", "-"), ("green", "-")],  # line styles
+        ylabel="GB/s",  # label name for the y-axis
+        plot_name="rope-performance",  # name for the plot. Used also as a file name for saving the plot.
+        args={
+            "batch_size": 4,
+            "n_heads": 8,
+            "head_dim": 64,
+            "dtype": torch.float32,
+        },  # values for function arguments not in `x_names` and `y_name`
+    )
+)
+def benchmark(seq_len, batch_size, n_heads, head_dim, dtype, provider):
+    """Benchmark RoPE implementation."""
+    q = torch.randn(batch_size, seq_len, n_heads, head_dim, device="cuda", dtype=dtype)
+    k = torch.randn(batch_size, seq_len, n_heads, head_dim, device="cuda", dtype=dtype)
+    cos, sin = generate_rope_freqs(seq_len, head_dim, device="cuda", dtype=dtype)
+
+    stream = torch.cuda.Stream()
+    torch.cuda.set_stream(stream)
+
+    if provider == "torch":
+        ms = triton.testing.do_bench(lambda: apply_rotary_pos_emb(q, k, cos, sin))
+    elif provider == "triton":
+        ms = triton.testing.do_bench(lambda: rope_triton(q, k, cos, sin))
+
+    # Calculate bandwidth: 2 * (q + k) tensors read + 2 * (q_rot + k_rot) tensors written
+    gbps = lambda ms: 4 * q.numel() * q.element_size() * 1e-9 / (ms * 1e-3)
+    return gbps(ms)
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+
+    pwd = Path(__file__).resolve().parent
+    (pwd / "day14").mkdir(parents=True, exist_ok=True)
+
+    benchmark.run(show_plots=True, print_data=True, save_path=pwd / "day14")

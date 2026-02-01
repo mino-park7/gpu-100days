@@ -168,7 +168,7 @@ gpu-100days/
 | 11 | Flash Attention | Flash Attention Triton (Causal/Non-causal, 다양한 헤드 차원 지원) | [x] |
 | 12 | SiLU (Triton) | SiLU (Sigmoid Linear Unit) Triton (다양한 데이터 타입 지원) | [x] |
 | 13 | SiLU (CUDA) | SiLU (Sigmoid Linear Unit) CUDA (다양한 데이터 타입 지원) | [x] |
-| 14 | - | - | [ ] |
+| 14 | RoPE (Rotary Position Embedding) | RoPE Triton (다양한 데이터 타입 지원, 성능 벤치마크) | [x] |
 
 ## 📖 참고 자료
 

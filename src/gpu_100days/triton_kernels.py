@@ -830,3 +830,125 @@ def silu_triton(x: torch.Tensor) -> torch.Tensor:
         BLOCK_SIZE=tl.constexpr(16),
     )
     return out
+
+
+@triton.jit
+def _rope_kernel(
+    q_ptr,
+    k_ptr,
+    cos_ptr,
+    sin_ptr,
+    q_rot_ptr,
+    k_rot_ptr,
+    stride_qb: int,
+    stride_qs: int,
+    stride_qh: int,
+    stride_qd: int,
+    stride_kb: int,
+    stride_ks: int,
+    stride_kh: int,
+    stride_kd: int,
+    stride_cos_s: int,
+    stride_cos_d: int,
+    stride_sin_s: int,
+    stride_sin_d: int,
+    BLOCK_SIZE: tl.constexpr,
+) -> None:
+    """
+    RoPE kernel implementation.
+    This is a placeholder - implement the actual kernel logic here.
+    """
+
+    batch_id = tl.program_id(0)
+    seq_len_id = tl.program_id(1)
+    head_id = tl.program_id(2)
+    offs_q_base = batch_id * stride_qb + seq_len_id * stride_qs + head_id * stride_qh
+    offs_q_real = offs_q_base + tl.arange(0, BLOCK_SIZE // 2) * 2 * stride_qd
+    offs_q_imag = offs_q_base + tl.arange(0, BLOCK_SIZE // 2) * 2 * stride_qd + 1
+    offs_k_base = batch_id * stride_kb + seq_len_id * stride_ks + head_id * stride_kh
+    offs_k_real = offs_k_base + tl.arange(0, BLOCK_SIZE // 2) * 2 * stride_kd
+    offs_k_imag = offs_k_base + tl.arange(0, BLOCK_SIZE // 2) * 2 * stride_kd + 1
+    offs_cos = seq_len_id * stride_cos_s + stride_cos_d * tl.arange(0, BLOCK_SIZE // 2)
+    offs_sin = seq_len_id * stride_sin_s + stride_sin_d * tl.arange(0, BLOCK_SIZE // 2)
+    q_real = tl.load(q_ptr + offs_q_real)
+    q_imag = tl.load(q_ptr + offs_q_imag)
+    k_real = tl.load(k_ptr + offs_k_real)
+    k_imag = tl.load(k_ptr + offs_k_imag)
+    cos = tl.load(cos_ptr + offs_cos)
+    sin = tl.load(sin_ptr + offs_sin)
+    q_rot_real = q_real * cos - q_imag * sin
+    q_rot_imag = q_real * sin + q_imag * cos
+    k_rot_real = k_real * cos - k_imag * sin
+    k_rot_imag = k_real * sin + k_imag * cos
+
+    q_rot = tl.store(q_rot_ptr + offs_q_real, q_rot_real)
+    q_rot = tl.store(q_rot_ptr + offs_q_imag, q_rot_imag)
+    k_rot = tl.store(k_rot_ptr + offs_k_real, k_rot_real)
+    k_rot = tl.store(k_rot_ptr + offs_k_imag, k_rot_imag)
+
+    tl.debug_barrier()
+
+
+def rope_triton(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    cos: torch.Tensor,
+    sin: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply Rotary Position Embedding (RoPE) to query and key tensors using Triton.
+
+    Args:
+        q: Query tensor of shape (batch_size, seq_len, n_heads, head_dim)
+        k: Key tensor of shape (batch_size, seq_len, n_heads, head_dim)
+        cos: Cosine values of shape (seq_len, head_dim // 2)
+        sin: Sine values of shape (seq_len, head_dim // 2)
+
+    Returns:
+        q_rot: Rotated query tensor of shape (batch_size, seq_len, n_heads, head_dim)
+        k_rot: Rotated key tensor of shape (batch_size, seq_len, n_heads, head_dim)
+    """
+    if not q.is_cuda or not k.is_cuda:
+        raise TritonExtensionError("Both tensors must be on CUDA device")
+    if q.dtype not in [torch.float16, torch.float32, torch.bfloat16]:
+        raise TritonExtensionError("Tensors must be float16, float32, or bfloat16")
+    if q.shape != k.shape:
+        raise TritonExtensionError("Query and key tensors must have the same shape")
+    if q.shape[-1] % 2 != 0:
+        raise TritonExtensionError("head_dim must be even for RoPE")
+
+    batch_size, seq_len, n_heads, head_dim = q.shape
+    if cos.shape[-1] != head_dim // 2:
+        raise TritonExtensionError("cos shape must be (seq_len, head_dim // 2)")
+    if sin.shape[-1] != head_dim // 2:
+        raise TritonExtensionError("sin shape must be (seq_len, head_dim // 2)")
+
+    # Create output tensors
+    q_rot = torch.empty_like(q)
+    k_rot = torch.empty_like(k)
+
+    # TODO: Implement grid launch and kernel call
+    grid = lambda meta: (batch_size, seq_len, n_heads)
+    _rope_kernel[grid](
+        q,
+        k,
+        cos,
+        sin,
+        q_rot,
+        k_rot,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        q.stride(3),
+        k.stride(0),
+        k.stride(1),
+        k.stride(2),
+        k.stride(3),
+        cos.stride(0),
+        cos.stride(1),
+        sin.stride(0),
+        sin.stride(1),
+        BLOCK_SIZE=tl.constexpr(head_dim),
+    )
+
+    return q_rot, k_rot
