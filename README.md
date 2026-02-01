@@ -151,8 +151,6 @@ gpu-100days/
 
 이 커리큘럼은 [100DaysForGPU](https://github.com/mino-park7/100DaysForGPU) 레포지토리를 참고하여 구성되었습니다.
 
-### Week 1-2: CUDA 기초 (Day 1-14)
-
 | Day | 주제 | 내용 | 상태 |
 |-----|------|------|------|
 | 1 | 벡터 연산 기초 | Print global indices for 1D vector<br>GPU 벡터 덧셈 (메모리 할당, 호스트-디바이스 전송) | [x] |
@@ -169,6 +167,8 @@ gpu-100days/
 | 12 | SiLU (Triton) | SiLU (Sigmoid Linear Unit) Triton (다양한 데이터 타입 지원) | [x] |
 | 13 | SiLU (CUDA) | SiLU (Sigmoid Linear Unit) CUDA (다양한 데이터 타입 지원) | [x] |
 | 14 | RoPE (Rotary Position Embedding) | RoPE Triton (다양한 데이터 타입 지원, 성능 벤치마크) | [x] |
+| 15 | RoPE (Rotary Position Embedding) | RoPE Cuda (다양한 데이터 타입 지원, 성능 벤치마크) | [x] |
+
 
 ## 📖 참고 자료
 
