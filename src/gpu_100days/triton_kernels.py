@@ -975,3 +975,29 @@ def count_equal_triton(input: torch.Tensor, K: int) -> torch.Tensor:
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     _count_equal_kernel[grid](input, output, N, K, BLOCK_SIZE=tl.constexpr(256))
     return output
+
+
+@triton.jit
+def _squared_error_kernel(predictions_ptr, targets_ptr, mse_ptr, N: int, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < N
+
+    predictions = tl.load(predictions_ptr + offset, mask=mask, other=0.0)
+    targets = tl.load(targets_ptr + offset, mask=mask, other=0.0)
+    squared_error = tl.sum((predictions - targets) * (predictions - targets))
+    tl.atomic_add(mse_ptr, squared_error / N)
+
+
+def mse_triton(predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    if not predictions.is_cuda or not targets.is_cuda:
+        raise TritonExtensionError("Both tensors must be on CUDA device")
+    if predictions.dtype != targets.dtype:
+        raise TritonExtensionError("Both tensors must have the same dtype")
+    if predictions.shape != targets.shape:
+        raise TritonExtensionError("Both tensors must have the same shape")
+    N = predictions.numel()
+    output = torch.zeros((), dtype=predictions.dtype, device=predictions.device)
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    _squared_error_kernel[grid](predictions, targets, output, N, BLOCK_SIZE=tl.constexpr(1024))
+    return output
