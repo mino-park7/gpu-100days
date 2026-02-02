@@ -952,3 +952,26 @@ def rope_triton(
     )
 
     return q_rot, k_rot
+
+
+@triton.jit
+def _count_equal_kernel(input_ptr, output_ptr, N: int, K: int, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < N
+    input = tl.load(input_ptr + offset, mask=mask, other=0)
+    output = tl.sum(input == K)
+    if output > 0:
+        tl.atomic_add(output_ptr, output)
+
+
+def count_equal_triton(input: torch.Tensor, K: int) -> torch.Tensor:
+    if not input.is_cuda:
+        raise TritonExtensionError("Tensor must be on CUDA device")
+    if input.dtype != torch.int32:
+        raise TritonExtensionError("Tensor must be int32")
+    output = torch.zeros((1,), dtype=torch.int32, device=input.device)
+    N = input.numel()
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    _count_equal_kernel[grid](input, output, N, K, BLOCK_SIZE=tl.constexpr(256))
+    return output

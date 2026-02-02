@@ -18,6 +18,7 @@ try:
     from .flash_attention import flash_attn_func
     from .triton_kernels import (
         add_triton,
+        count_equal_triton,
         grey_scale_triton,
         layer_norm_fused,
         matrix_add_triton,
@@ -32,6 +33,7 @@ try:
 
     __all__ = [
         "add_triton",
+        "count_equal_triton",
         "flash_attn_func",
         "gray_scale",
         "grey_scale_triton",
