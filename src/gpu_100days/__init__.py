@@ -19,6 +19,7 @@ try:
     from .triton_kernels import (
         add_triton,
         clip_triton,
+        convolution_2d_triton,
         count_equal_triton,
         grey_scale_triton,
         layer_norm_fused,
@@ -36,6 +37,7 @@ try:
     __all__ = [
         "add_triton",
         "clip_triton",
+        "convolution_2d_triton",
         "count_equal_triton",
         "flash_attn_func",
         "gray_scale",

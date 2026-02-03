@@ -1024,3 +1024,68 @@ def clip_triton(input: torch.Tensor, low: float, high: float) -> torch.Tensor:
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     _clip_kernel[grid](input, output, low, high, N, BLOCK_SIZE=tl.constexpr(256))
     return output
+
+
+@triton.jit
+def _2d_convolution_kernel(
+    input_ptr,
+    kernel_ptr,
+    output_ptr,
+    input_rows: int,
+    input_cols: int,
+    output_rows: int,
+    output_cols: int,
+    kernel_rows: int,
+    kernel_cols: int,
+    BLOCK_SIZE: tl.constexpr,
+):
+    start_row = tl.program_id(0) * BLOCK_SIZE
+    start_col = tl.program_id(1) * BLOCK_SIZE
+
+    ret = tl.zeros([BLOCK_SIZE, BLOCK_SIZE], dtype=tl.float32)
+    for r in range(kernel_rows):
+        for c in range(kernel_cols):
+            offs_row = start_row + r + tl.arange(0, BLOCK_SIZE)
+            offs_col = start_col + c + tl.arange(0, BLOCK_SIZE)
+            offs_inp = offs_row[:, None] * input_cols + offs_col[None, :]
+            mask_inp = (offs_row[:, None] < input_rows) & (offs_col[None, :] < input_cols)
+            inputs = tl.load(input_ptr + offs_inp, mask=mask_inp, other=0.0)
+            kernel = tl.load(kernel_ptr + r * kernel_cols + c)
+            ret = tl.fma(inputs, kernel, ret)
+    offs_row = start_row + tl.arange(0, BLOCK_SIZE)
+    offs_col = start_col + tl.arange(0, BLOCK_SIZE)
+    offs_out = offs_row[:, None] * output_cols + offs_col[None, :]
+    mask_out = (offs_row[:, None] < output_rows) & (offs_col[None, :] < output_cols)
+    tl.store(output_ptr + offs_out, ret, mask=mask_out)
+
+
+def convolution_2d_triton(input: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    if not input.is_cuda or not kernel.is_cuda:
+        raise TritonExtensionError("Both tensors must be on CUDA device")
+    if input.dtype != kernel.dtype:
+        raise TritonExtensionError("Both tensors must have the same dtype")
+    if input.dim() != 2 or kernel.dim() != 2:
+        raise TritonExtensionError("Both tensors must be 2D")
+    input_rows, input_cols = input.shape
+    kernel_rows, kernel_cols = kernel.shape
+    if kernel_rows > input_rows or kernel_cols > input_cols:
+        raise TritonExtensionError("Kernel size must be smaller than or equal to input size")
+    output_rows, output_cols = input_rows - kernel_rows + 1, input_cols - kernel_cols + 1
+    output = torch.empty((output_rows, output_cols), dtype=input.dtype, device=input.device)
+    grid = lambda meta: (
+        triton.cdiv(output_rows, meta["BLOCK_SIZE"]),
+        triton.cdiv(output_cols, meta["BLOCK_SIZE"]),
+    )
+    _2d_convolution_kernel[grid](
+        input,
+        kernel,
+        output,
+        input_rows,
+        input_cols,
+        output_rows,
+        output_cols,
+        kernel_rows,
+        kernel_cols,
+        BLOCK_SIZE=tl.constexpr(32),
+    )
+    return output
