@@ -1001,3 +1001,26 @@ def mse_triton(predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     _squared_error_kernel[grid](predictions, targets, output, N, BLOCK_SIZE=tl.constexpr(1024))
     return output
+
+
+@triton.jit
+def _clip_kernel(input_ptr, output_ptr, low: float, high: float, N: int, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < N
+    input = tl.load(input_ptr + offset, mask=mask, other=0.0)
+    output = tl.where(input < low, low, input)
+    output = tl.where(output > high, high, output)
+    tl.store(output_ptr + offset, output, mask=mask)
+
+
+def clip_triton(input: torch.Tensor, low: float, high: float) -> torch.Tensor:
+    if not input.is_cuda:
+        raise TritonExtensionError("Tensor must be on CUDA device")
+    if input.dtype != torch.float32:
+        raise TritonExtensionError("Tensor must be float32")
+    N = input.numel()
+    output = torch.empty_like(input)
+    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    _clip_kernel[grid](input, output, low, high, N, BLOCK_SIZE=tl.constexpr(256))
+    return output
