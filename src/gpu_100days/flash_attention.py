@@ -42,8 +42,8 @@ def _fwd_kernel(  # noqa: PLR0912, PLR0915
     seqlen_k,
     seqlen_q_rounded,
     head_dim,
-    CACHE_KEY_SEQLEN_Q,  # noqa: ARG001
-    CACHE_KEY_SEQLEN_K,  # noqa: ARG001
+    CACHE_KEY_SEQLEN_Q,
+    CACHE_KEY_SEQLEN_K,
     BIAS_TYPE: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
     BLOCK_HEADDIM: tl.constexpr,
@@ -234,9 +234,9 @@ def _flash_attn_fwd(
     assert k.shape == (batch, seqlen_k, n_heads, head_dim)
     assert v.shape == (batch, seqlen_k, n_heads, head_dim)
     assert head_dim <= 128, "FlashAttention only support head dimensions up to 128"
-    assert (
-        q.dtype == k.dtype == v.dtype
-    ), "FlashAttention only support the same data type for q, k, and v"
+    assert q.dtype == k.dtype == v.dtype, (
+        "FlashAttention only support the same data type for q, k, and v"
+    )
     assert q.dtype in [torch.float16, torch.bfloat16], "Only support fp16 and bf16"
     assert q.is_cuda and k.is_cuda and v.is_cuda, "FlashAttention only support CUDA tensors"
     softmax_scale = softmax_scale or 1.0 / math.sqrt(head_dim)
