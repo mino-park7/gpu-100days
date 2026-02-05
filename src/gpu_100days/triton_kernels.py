@@ -1089,3 +1089,144 @@ def convolution_2d_triton(input: torch.Tensor, kernel: torch.Tensor) -> torch.Te
         BLOCK_SIZE=tl.constexpr(32),
     )
     return output
+
+
+@triton.jit
+def _int8_quantized_matmul(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    M: int,
+    N: int,
+    K: int,
+    stride_am: int,
+    stride_ak: int,
+    stride_bk: int,
+    stride_bn: int,
+    stride_cm: int,
+    stride_cn: int,
+    scale_a: float,
+    scale_b: float,
+    scale_c: float,
+    zp_a: int,
+    zp_b: int,
+    zp_c: int,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_SIZE_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+    tl.assume(pid_m >= 0)
+    tl.assume(pid_n >= 0)
+    tl.assume(stride_am > 0)
+    tl.assume(stride_ak > 0)
+    tl.assume(stride_bk > 0)
+    tl.assume(stride_bn > 0)
+    tl.assume(stride_cm > 0)
+    tl.assume(stride_cn > 0)
+
+    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
+    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+
+    # Accumulator 초기화
+    int_accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.int32)
+    a_sum = tl.zeros((BLOCK_SIZE_M,), dtype=tl.int32)
+    b_sum = tl.zeros((BLOCK_SIZE_N,), dtype=tl.int32)
+
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        k_remaining = K - k * BLOCK_SIZE_K
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < k_remaining, other=0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < k_remaining, other=0)
+
+        # 1. Main GEMM
+        int_accumulator = tl.dot(a, b, int_accumulator)
+
+        # 2. ZP 계산을 위한 Row/Col Sum (수정된 부분)
+        a_sum += tl.sum(a, axis=1)
+        b_sum += tl.sum(b, axis=0)
+
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
+
+    # 루프 밖에서 Residual 항들을 한 번에 계산
+    # 3. 항 전개: - (Zb * SumA) - (Za * SumB) + (K * Za * Zb)
+    # broadcasting을 활용하여 (M, N) matrix 생성
+    zp_term = a_sum[:, None] * zp_b + b_sum[None, :] * zp_a - K * zp_a * zp_b
+
+    # 4. Dequantization 및 Final ZP (zp_c) 적용
+    # int_accumulator에서 위에서 구한 zp_term을 빼줌
+    # (주의: 수식 전개 결과가 -Zb*SumA 이므로 부호 확인 필요)
+    c = (int_accumulator - zp_term).to(tl.float32) * scale_a * scale_b
+    c = tl.clamp(tl.div_rn(c, scale_c) + zp_c, -128, 127).to(tl.int8)
+
+    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+
+    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, c, mask=c_mask)
+
+
+def int8_quantized_matmul_triton(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    scale_a: float,
+    scale_b: float,
+    scale_c: float,
+    zero_point_a: int,
+    zero_point_b: int,
+    zero_point_c: int,
+) -> torch.Tensor:
+    if not a.is_cuda or not b.is_cuda:
+        raise TritonExtensionError("Both tensors must be on CUDA device")
+    if a.dtype != torch.int8 or b.dtype != torch.int8:
+        raise TritonExtensionError("Both tensors must be int8")
+    if a.shape[1] != b.shape[0]:
+        raise TritonExtensionError("Invalid tensor shapes for matrix multiplication")
+    M, K = a.shape
+    K, N = b.shape
+    c = torch.empty((M, N), dtype=torch.int8, device=a.device)
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_SIZE_M"]) * triton.cdiv(N, meta["BLOCK_SIZE_N"]),
+    )
+    _int8_quantized_matmul[grid](
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        scale_a,
+        scale_b,
+        scale_c,
+        zero_point_a,
+        zero_point_b,
+        zero_point_c,
+        BLOCK_SIZE_M=tl.constexpr(128),
+        BLOCK_SIZE_N=tl.constexpr(128),
+        BLOCK_SIZE_K=tl.constexpr(128),
+        GROUP_SIZE_M=tl.constexpr(8),
+    )
+    return c

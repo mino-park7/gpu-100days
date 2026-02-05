@@ -35,9 +35,9 @@ def compare_kernel_with_pytorch(kernel_func, pytorch_func, *args, rtol=1e-5):
     pytorch_result = pytorch_func(*args)
 
     # Compare results
-    assert torch.allclose(
-        kernel_result, pytorch_result, rtol=rtol
-    ), f"Results do not match. Kernel shape: {kernel_result.shape}, PyTorch shape: {pytorch_result.shape}"
+    assert torch.allclose(kernel_result, pytorch_result, rtol=rtol), (
+        f"Results do not match. Kernel shape: {kernel_result.shape}, PyTorch shape: {pytorch_result.shape}"
+    )
 
 
 def _get_tensor_numel(*args):
